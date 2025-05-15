@@ -1,3 +1,0 @@
-# PasswordManager
-
-MasterPass:1
