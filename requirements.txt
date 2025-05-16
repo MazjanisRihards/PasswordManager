@@ -1,2 +1,4 @@
 passlib==1.7.4
 bcrypt==4.0.1 
+cryptography==44.0.3
+pyperclip==1.9.0
