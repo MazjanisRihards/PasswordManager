@@ -1,6 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font
-from passlib.hash import pbkdf2_sha256
+from tkinter import ttk, messagebox
 import json
 import os
 from cryptography.fernet import Fernet
@@ -8,6 +7,35 @@ import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import pyperclip
+
+class PasswordNode:
+    def __init__(self, website, username, password):
+        self.website = website
+        self.username = username
+        self.password = password
+        self.next = None
+
+class PasswordList:
+    def __init__(self):
+        self.head = None
+    
+    def add(self, website, username, password):
+        new_node = PasswordNode(website, username, password)
+        if not self.head:
+            self.head = new_node
+        else:
+            current = self.head
+            while current.next:
+                current = current.next
+            current.next = new_node
+    
+    def to_list(self):
+        result = []
+        current = self.head
+        while current:
+            result.append((current.website, current.username, current.password))
+            current = current.next
+        return result
 
 class PasswordManager:
     def __init__(self):
@@ -20,10 +48,16 @@ class PasswordManager:
         self.encryption_key = None
         self.view_window = None
         self.edit_window = None
+        self.download_window = None
         self.data_file = "passwords.txt"
+        self.current_index = 0
         if not os.path.exists(self.data_file):
             with open(self.data_file, "w") as f:
-                json.dump({}, f)
+                json.dump({"passwords": [], "next_index": 0}, f)
+        else:
+            with open(self.data_file, "r") as f:
+                data = json.load(f)
+                self.current_index = data.get("next_index", 0)
         self.setup_ui()
         
     def setup_ui(self):
@@ -64,158 +98,139 @@ class PasswordManager:
         if password != "1":
             messagebox.showerror("Error", "Incorrect master password")
             return
-        try:
-            salt = b'password_manager_salt'
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=salt,
-                iterations=100000,
-            )
-            self.encryption_key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-            self.fernet = Fernet(self.encryption_key)
-            self.login_frame.grid_remove()
-            self.password_frame.grid()
-        except Exception as e:
-            messagebox.showerror("Error", f"Error during login: {str(e)}")
+        salt = b'password_manager_salt'
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        self.encryption_key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        self.fernet = Fernet(self.encryption_key)
+        self.login_frame.grid_remove()
+        self.password_frame.grid()
         
     def save_password(self):
-        if not self.fernet:
-            messagebox.showerror("Error", "Not logged in properly")
-            return
         website = self.website_entry.get()
         username = self.username_entry.get()
-        password = self.password_entry.get()
+        password = str(self.password_entry.get())
         if not all([website, username, password]):
             messagebox.showerror("Error", "Please fill in all fields")
             return
-        try:
-            with open(self.data_file, "r") as f:
-                data = json.load(f)
-            if website not in data:
-                data[website] = {}
-            encrypted_username = self.fernet.encrypt(username.encode()).decode()
-            encrypted_password = self.fernet.encrypt(password.encode()).decode()
-            data[website][encrypted_username] = encrypted_password
-            with open(self.data_file, "w") as f:
-                json.dump(data, f)
-            messagebox.showinfo("Success", "Password saved successfully!")
-            self.clear_entries()
-        except Exception as e:
-            messagebox.showerror("Error", f"Error saving password: {str(e)}")
+            
+        with open(self.data_file, "r") as f:
+            data = json.load(f)
+            
+       
+        encrypted_username = self.fernet.encrypt(str(username).encode()).decode()
+        encrypted_password = self.fernet.encrypt(str(password).encode()).decode()
+        
+        new_entry = {
+            "index": self.current_index,
+            "website": website,
+            "username": encrypted_username,
+            "password": encrypted_password
+        }
+        
+        data["passwords"].append(new_entry)
+        data["next_index"] = self.current_index + 1
+        self.current_index += 1
+        
+        with open(self.data_file, "w") as f:
+            json.dump(data, f, indent=4)
+            
+        messagebox.showinfo("Success", "Password saved successfully!")
+        self.clear_entries()
         
     def view_passwords(self):
-        if not self.fernet:
-            messagebox.showerror("Error", "Not logged in properly")
-            return
-        if self.view_window is not None and self.view_window.winfo_exists():
-            self.view_window.lift()
-            return
         self.view_window = tk.Toplevel(self.window)
         self.view_window.title("Saved Passwords")
         self.view_window.geometry("800x500")
         self.view_window.resizable(False, False)
-        def on_view_window_close():
-            self.view_window.destroy()
-            self.view_window = None
-        self.view_window.protocol("WM_DELETE_WINDOW", on_view_window_close)
+        
         main_frame = ttk.Frame(self.view_window, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
+        
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        y_scrollbar = ttk.Scrollbar(tree_frame)
-        y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        x_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL)
-        x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        tree = ttk.Treeview(tree_frame, columns=("Website", "Username", "Password"), 
-                           show="headings", 
-                           yscrollcommand=y_scrollbar.set,
-                           xscrollcommand=x_scrollbar.set)
-        y_scrollbar.config(command=tree.yview)
-        x_scrollbar.config(command=tree.xview)
-        tree.column("Website", width=200, minwidth=150)
-        tree.column("Username", width=200, minwidth=150)
-        tree.column("Password", width=300, minwidth=200)
+        
+        tree = ttk.Treeview(tree_frame, columns=("Index", "Website", "Username", "Password"), show="headings")
+        tree.column("Index", width=0, stretch=False)  
+        tree.column("Website", width=200)
+        tree.column("Username", width=200)
+        tree.column("Password", width=300)
+        tree.heading("Index", text="")
         tree.heading("Website", text="Website")
         tree.heading("Username", text="Username")
         tree.heading("Password", text="Password")
         tree.pack(fill=tk.BOTH, expand=True)
+        
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=5)
         
         def edit_selected():
-            if self.edit_window is not None and self.edit_window.winfo_exists():
-                self.edit_window.lift()
-                return
             selected_item = tree.selection()
             if not selected_item:
                 messagebox.showwarning("Warning", "Please select a password to edit")
                 return
+                
             current_values = tree.item(selected_item[0])['values']
-            website, username, password = current_values
-            self.edit_window = tk.Toplevel(self.view_window)
-            self.edit_window.title("Edit Password")
-            self.edit_window.geometry("400x400")
-            self.edit_window.resizable(False, False)
-            self.edit_window.transient(self.view_window)
-            self.edit_window.grab_set()
-            def on_edit_window_close():
-                self.edit_window.grab_release()
-                self.edit_window.destroy()
-                self.edit_window = None
-            self.edit_window.protocol("WM_DELETE_WINDOW", on_edit_window_close)
-            ttk.Label(self.edit_window, text="Website:").pack(pady=5)
-            website_entry = ttk.Entry(self.edit_window)
+            index = current_values[0]
+            website = current_values[1]
+            username = current_values[2]
+            password = current_values[3]
+
+            edit_window = tk.Toplevel(self.view_window)
+            edit_window.title("Edit Password")
+            edit_window.geometry("400x300")
+            edit_window.resizable(False, False)
+            
+            ttk.Label(edit_window, text="Website:").pack(pady=5)
+            website_entry = ttk.Entry(edit_window)
             website_entry.insert(0, website)
             website_entry.pack(pady=5)
-            ttk.Label(self.edit_window, text="Username:").pack(pady=5)
-            username_entry = ttk.Entry(self.edit_window)
+            
+            ttk.Label(edit_window, text="Username:").pack(pady=5)
+            username_entry = ttk.Entry(edit_window)
             username_entry.insert(0, username)
             username_entry.pack(pady=5)
-            ttk.Label(self.edit_window, text="Password:").pack(pady=5)
-            password_entry = ttk.Entry(self.edit_window, show="*")
+            
+            ttk.Label(edit_window, text="Password:").pack(pady=5)
+            password_entry = ttk.Entry(edit_window, show="*")
             password_entry.insert(0, password)
             password_entry.pack(pady=5)
+            
             def save_changes():
                 new_website = website_entry.get()
                 new_username = username_entry.get()
                 new_password = password_entry.get()
+                
                 if not all([new_website, new_username, new_password]):
                     messagebox.showerror("Error", "Please fill in all fields")
                     return
+                
                 try:
                     with open(self.data_file, "r") as f:
                         data = json.load(f)
-                    if website in data:
-                        for encrypted_username in list(data[website].keys()):
-                            try:
-                                if self.fernet.decrypt(encrypted_username.encode()).decode() == username:
-                                    del data[website][encrypted_username]
-                                    break
-                            except:
-                                continue
-                        if not data[website]:
-                            del data[website]
-                    if new_website not in data:
-                        data[new_website] = {}
-                    encrypted_username = self.fernet.encrypt(new_username.encode()).decode()
-                    encrypted_password = self.fernet.encrypt(new_password.encode()).decode()
-                    data[new_website][encrypted_username] = encrypted_password
+                    
+                    for entry in data["passwords"]:
+                        if entry["index"] == index:
+                            entry["website"] = new_website
+                            entry["username"] = self.fernet.encrypt(str(new_username).encode()).decode()
+                            entry["password"] = self.fernet.encrypt(str(new_password).encode()).decode()
+                            break
+                    
                     with open(self.data_file, "w") as f:
-                        json.dump(data, f)
-                    if new_website != website or new_username != username:
-                        tree.delete(selected_item[0])
-                        tree.insert("", "end", values=(new_website, new_username, new_password))
-                    else:
-                        tree.item(selected_item[0], values=(new_website, new_username, new_password))
-                    self.edit_window.destroy()
-                    self.edit_window = None
+                        json.dump(data, f, indent=4)
+                    
+                   
+                    tree.item(selected_item[0], values=(index, new_website, new_username, new_password))
+                    edit_window.destroy()
                     messagebox.showinfo("Success", "Password updated successfully!")
                 except Exception as e:
                     messagebox.showerror("Error", f"Error updating password: {str(e)}")
-            save_frame = ttk.Frame(self.edit_window)
-            save_frame.pack(fill=tk.X, pady=10)
-            ttk.Button(save_frame, text="Save", command=save_changes).pack(pady=5)
+            
+            ttk.Button(edit_window, text="Save Changes", command=save_changes).pack(pady=10)
         
         def delete_selected():
             selected_item = tree.selection()
@@ -224,57 +239,55 @@ class PasswordManager:
                 return
             if not messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this password?"):
                 return
+            
             try:
                 current_values = tree.item(selected_item[0])['values']
-                website, username, password = current_values
+                index = current_values[0]
+                
                 with open(self.data_file, "r") as f:
                     data = json.load(f)
-                if website in data:
-                    for encrypted_username in list(data[website].keys()):
-                        try:
-                            if self.fernet.decrypt(encrypted_username.encode()).decode() == username:
-                                del data[website][encrypted_username]
-                                break
-                        except:
-                            continue
-                    if not data[website]:
-                        del data[website]
+                
+     
+                data["passwords"] = [p for p in data["passwords"] if p["index"] != index]
+                
                 with open(self.data_file, "w") as f:
-                    json.dump(data, f)
+                    json.dump(data, f, indent=4)
+                
                 tree.delete(selected_item[0])
                 messagebox.showinfo("Success", "Password deleted successfully!")
             except Exception as e:
+                print(f"Error during deletion: {e}")
                 messagebox.showerror("Error", f"Error deleting password: {str(e)}")
-
+        
         def copy_selected():
             selected_item = tree.selection()
             if not selected_item:
                 messagebox.showwarning("Warning", "Please select a password to copy")
                 return
-            try:
-                current_values = tree.item(selected_item[0])['values']
-                website, username, password = current_values
-                pyperclip.copy(password)
-            except Exception as e:
-                messagebox.showerror("Error", f"Error copying password: {str(e)}")
+            current_values = tree.item(selected_item[0])['values']
+            password = current_values[3]  
+            pyperclip.copy(password)
         
         ttk.Button(button_frame, text="Edit", command=edit_selected).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Delete", command=delete_selected).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Copy password to clipboard", command=copy_selected).pack(side=tk.LEFT, padx=5)
         
-        try:
-            with open(self.data_file, "r") as f:
-                data = json.load(f)
-            for website, users in data.items():
-                for encrypted_username, encrypted_password in users.items():
-                    try:
-                        decrypted_username = self.fernet.decrypt(encrypted_username.encode()).decode()
-                        decrypted_password = self.fernet.decrypt(encrypted_password.encode()).decode()
-                        tree.insert("", "end", values=(website, decrypted_username, decrypted_password))
-                    except:
-                        tree.insert("", "end", values=(website, "Error decrypting", "Error decrypting"))
-        except Exception as e:
-            messagebox.showerror("Error", f"Error loading passwords: {str(e)}")
+   
+        with open(self.data_file, "r") as f:
+            data = json.load(f)
+            
+        for entry in data["passwords"]:
+            try:
+                decrypted_username = self.fernet.decrypt(entry["username"].encode()).decode()
+                decrypted_password = self.fernet.decrypt(entry["password"].encode()).decode()
+                tree.insert("", "end", values=(
+                    entry["index"],
+                    entry["website"],
+                    decrypted_username,
+                    decrypted_password
+                ))
+            except Exception as e:
+                print(f"Error decrypting entry: {e}")
         
     def clear_entries(self):
         self.website_entry.delete(0, tk.END)
