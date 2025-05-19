@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import hashlib
 from passlib.hash import pbkdf2_sha256
 import json
 import os
@@ -60,7 +61,8 @@ class PasswordManager:
         
     def login(self):
         password = self.master_password_entry.get()
-        if password != "1":
+        hashed_input = hashlib.sha256(password.encode()).hexdigest()
+        if hashed_input != "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b":
             messagebox.showerror("Error", "Incorrect master password")
             return
         try:
