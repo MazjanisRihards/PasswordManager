@@ -10,10 +10,10 @@ Eksistē vairākas paroļu menedžeru aplikācijas kā 'Lastpass' un 'Bitwarden'
 ## Lietotās bibliotēkas
 
 1. tkinter - Izmanto programmas grafiskā interfeisa veidošanai
-2. json - Izmanto lai string objektu pārveidotu json formātā un atpakaļ
+2. json - Izmanto lai string objektu pārveidotu json formātā un atpakaļ, lai vieglāk saglabatu, lasītu un apstrādātu datus
 3. os - Izmanto vieglākai failu veidošanai un rediģēšanai
 4. base64 - Izmanto string objektu pārveidošanai bināros datos un atpakaļ
-5. cryptography - Izmanto paroļu pasargāšanai
+5. cryptography - Izmanto paroļu pasargāšanai šifrējot datus
 6. pyperclip - Izmanto lai paroli kopētu
 7. hashlib - Izmanto lai lietotu hash algoritmus
 
@@ -30,7 +30,7 @@ Eksistē vairākas paroļu menedžeru aplikācijas kā 'Lastpass' un 'Bitwarden'
 3. Skatīt visas saglabātās paroles - Visas saglabātās paroles kopā ar saistītajām mājaslapām un lietotājvārdiem tiek parādītas sarakstā
 4. Rediģēt paroli - Izvēlētā parole, lietotājvārds vai mājaslapa tiek rediģēta
 5. Izdzēst paroli - Izvēlētā parole tiek dzēsta
-6. Kopēt paroli - Izvēlētā parole yiek kopēta uz 'clipboard'
+6. Kopēt paroli - Izvēlētā parole tiek kopēta uz 'clipboard'
 7. Lejupielādēt paroles - Tiek izveidots fails kurā tiek ierakstītas izvēlētās paroles uz kurām nav izmantotas hash funkcijas
 
 ## Dati programmas sagatavošanai
